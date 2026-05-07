@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birthday Wishes</title>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #121212;
+            color: #00ff00;
+            padding: 2rem;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+
+        #content {
+            opacity: 0.7;
+            overflow: hidden;
+        }
+
+        body.decrypted {
+            background-color: #ffffff;
+            color: #333333;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body.decrypted #content {
+            opacity: 1;
+        }
+
+        #fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background-color: #6200ea;
+            color: white;
+            border-radius: 50%;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        #fab:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="content">Loading encrypted payload...</div>
+    <button id="fab" title="Decrypt" aria-label="Decrypt Content">🔑</button>
+    <script>
+        const ENCRYPTED_PAYLOAD_BASE64 = "eyJzYWx0IjpbNjQsMjAzLDM0LDc0LDExNCwyMjQsNDksNyw5NywxNDgsNTEsOTAsMjQxLDQ5LDI0MSwyMzBdLCJpdiI6WzExOCw3MCwxMzAsMTMyLDIxMSw4LDI0MiwxMzcsMzQsMTY3LDMyLDExXSwiZGF0YSI6WzgyLDMzLDQ1LDE5MCwxMTIsMTQsMjEyLDE3MywyMTEsNjcsMjUzLDcsMTU5LDIyMywxMTIsMTIzLDExMywyMDEsMjExLDEsMTkzLDIsNTksMTM3LDE2MCwxMDUsMjE1LDQ1LDI1MCwxMDksMTQ5LDI3LDE3LDE3NiwyNDUsMjksNjYsMTYxLDIxMCwxNzcsMTI0LDEyMywxNzcsMTc0LDI1NSwyNDYsODIsMjM3LDIzMSwyMDYsNjYsNDgsMjA3LDE1NSw3LDIwOSwyMTAsNTMsNTcsNTEsMjQ5LDk4LDIzLDE3MCw5Miw2MSw0NSw1MCw4MiwxMiw4NSwxNDcsNzksMTg1LDIyNSw1NSw4NSwyMTYsMjMzLDE5OSwyMTAsMTM2LDU4LDE2OSwyMTksMTUyLDQ3LDkwXX0";
+
+        document.getElementById('content').innerText =
+            ENCRYPTED_PAYLOAD_BASE64 !== "REPLACE_ME_WITH_BASE64_PAYLOAD"
+                ? ENCRYPTED_PAYLOAD_BASE64.match(/.{1,80}/g).join('\n')
+                : "No encrypted payload found. Please generate one.";
+
+        function base64ToUint8Array(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        async function decryptContent(password, payloadBase64) {
+            try {
+                const payloadStr = new TextDecoder().decode(base64ToUint8Array(payloadBase64));
+                const payload = JSON.parse(payloadStr);
+                const salt = new Uint8Array(payload.salt);
+                const iv = new Uint8Array(payload.iv);
+                const data = new Uint8Array(payload.data);
+                const enc = new TextEncoder();
+                const keyMaterial = await window.crypto.subtle.importKey(
+                    "raw",
+                    enc.encode(password),
+                    { name: "PBKDF2" },
+                    false,
+                    ["deriveBits", "deriveKey"]
+                );
+                const key = await window.crypto.subtle.deriveKey(
+                    {
+                        name: "PBKDF2",
+                        salt: salt,
+                        iterations: 250000,
+                        hash: "SHA-256"
+                    },
+                    keyMaterial,
+                    { name: "AES-GCM", length: 256 },
+                    true,
+                    ["decrypt"]
+                );
+                const decryptedBuffer = await window.crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv },
+                    key,
+                    data
+                );
+                return new TextDecoder().decode(decryptedBuffer);
+            } catch (e) {
+                console.error("Decryption failed.", e);
+                return null;
+            }
+        }
+
+        document.getElementById('fab').addEventListener('click', async () => {
+            if (!window.crypto || !window.crypto.subtle) {
+                alert("Error: Web Crypto API is not available.\n\nThis usually happens if you are accessing the page over HTTP on a local network from your phone.\nThe Web Crypto API requires a Secure Context (HTTPS or localhost).");
+                return;
+            }
+            const password = prompt("Enter decryption password:");
+            if (!password) return;
+            const plaintext = await decryptContent(password, ENCRYPTED_PAYLOAD_BASE64);
+            if (plaintext) {
+                document.getElementById('content').innerHTML = plaintext;
+                document.getElementById('fab').style.display = 'none';
+                document.body.classList.add('decrypted');
+            } else {
+                alert("Incorrect password or corrupted data.");
+            }
+        });
+    </script>
+</body>
+
+</html>
